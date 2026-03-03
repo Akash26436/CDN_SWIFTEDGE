@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv
+venv
+env
+*.log
+disk_cache/
+disk_cache_*/
+origin/disk_cache/
+.DS_Store
+*.swp
