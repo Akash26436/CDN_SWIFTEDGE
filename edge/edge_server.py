@@ -9,13 +9,17 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.security import SecurityManager
 from core.edge_compute import EdgeCompute, inject_server_latency_header, minify_html_interceptor
+from core.optimized_cache import OptimizedCache
 
-memory_cache = LRUCache(100)
 metrics = Metrics()
 locks = LockManager()
 pool = ThreadPool(10)
 security = SecurityManager()
 compute = EdgeCompute()
+
+def get_optimized_cache(port):
+    return OptimizedCache(port)
+
 
 # Register Edge Functions
 compute.register_request_interceptor(inject_server_latency_header)
