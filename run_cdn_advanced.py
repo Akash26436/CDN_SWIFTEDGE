@@ -7,6 +7,20 @@ import random
 import zlib
 from queue import Queue
 
+# --- CORE UTILS ---
+
+class RateLimiter:
+    def __init__(self, rate=10, capacity=20):
+        self.rate = rate; self.capacity = capacity; self.tokens = capacity
+        self.last_update = time.time(); self.lock = threading.Lock()
+    def consume(self):
+        with self.lock:
+            now = time.time(); elapsed = now - self.last_update
+            self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)
+            self.last_update = now
+            if self.tokens >= 1: self.tokens -= 1; return True
+            return False
+
 # --- SOLUTION ARCHITECTURE: CORE ENGINES ---
 
 class PointOfPresence:
@@ -27,8 +41,9 @@ class PointOfPresence:
             if not raw: return
             request_text = raw.decode(errors='ignore')
             
-            # 1. Edge Security Layer (WAF + Auth)
-            safe, reason = self.security.inspect(request_text)
+            # 1. Edge Security Layer (WAF + Auth + Rate Limiting)
+            safe, reason = self.security.inspect(addr[0], request_text)
+
             if not safe:
                 conn.sendall(f"HTTP/1.1 403 Forbidden\r\n\r\nCDN Security Alert: {reason}".encode())
                 return
@@ -102,10 +117,21 @@ class OptimizedCacheEngine:
         with open(path, 'wb') as f: f.write(zlib.compress(data))
 
 class EdgeSecurityLayer:
-    def inspect(self, txt):
+    def __init__(self):
+        self.limiter = RateLimiter(rate=2, capacity=5) # Realistic tight limit for demo
+
+    def inspect(self, addr, txt):
+        # 1. Zero-Trust Check
         if "X-Auth: secure123" not in txt: return False, "Missing Zero-Trust Token"
+        
+        # 2. DDoS / Rate Limit Check
+        if not self.limiter.consume(): return False, "Rate Limit Exceeded (DDoS Protection)"
+        
+        # 3. WAF Check
         if "OR 1=1" in txt: return False, "WAF: SQL Injection Detected"
+        
         return True, None
+
 
 # --- ORCHESTRATOR: GLOBAL SIMULATION ---
 
@@ -137,29 +163,41 @@ class CDNSimulator:
             {"user": "New York Client", "pop": "US-East-1", "port": 8081, "type": "First Access (Cold)"},
             {"user": "New York Client", "pop": "US-East-1", "port": 8081, "type": "Repeat Access (Warm)"},
             {"user": "London Client", "pop": "EU-West-1", "port": 8082, "type": "Regional Access (Cold)"},
+            {"user": "DDoS Attacker", "pop": "Any", "port": 8081, "type": "High-Frequency Burst", "burst": 8},
             {"user": "Attacker (No Token)", "pop": "Any", "port": 8081, "type": "Security Bypass Attempt", "token": None},
+
             {"user": "Hacker (SQLi)", "pop": "Any", "port": 8081, "type": "WAF Stress Test", "sqli": True}
         ]
 
         results = []
         for s in scenarios:
             print(f"\n[Scenario] {s['user']} | {s['type']}")
-            headers = {"X-Auth": "secure123"}
-            if s.get('token') is None and 'token' in s: headers = {}
+            iterations = s.get('burst', 1)
             
-            url = f"http://127.0.0.1:{s['port']}/index.html"
-            if s.get('sqli'): url += "?q=' OR 1=1 --"
+            for i in range(iterations):
+                headers = {"X-Auth": "secure123"}
+                if s.get('token') is None and 'token' in s: headers = {}
+                
+                url = f"http://127.0.0.1:{s['port']}/index.html"
+                if s.get('sqli'): url += "?q=' OR 1=1 --"
 
-            start = time.perf_counter()
-            try:
-                r = requests.get(url, headers=headers, timeout=2)
-                lat = (time.perf_counter() - start) * 1000
-                status = f"HTTP {r.status_code}"
-                cache = r.headers.get("X-Cache", "N/A")
-                internal = r.headers.get("X-Edge-Latency", "N/A")
-                results.append(f"{s['user']:<20} | {status:<10} | Cache: {cache:<8} | Latency: {lat:>8.2f}ms")
-            except Exception as e:
-                results.append(f"{s['user']:<20} | FAILED     | Error: {e}")
+                start = time.perf_counter()
+                try:
+                    r = requests.get(url, headers=headers, timeout=2)
+                    lat = (time.perf_counter() - start) * 1000
+                    status = f"HTTP {r.status_code}"
+                    cache = r.headers.get("X-Cache", "N/A")
+                    
+                    msg = f"{s['user']:<20} | {status:<10} | Cache: {cache:<8} | Latency: {lat:>8.2f}ms"
+                    if iterations > 1: msg += f" (Burst {i+1})"
+                    results.append(msg)
+                    
+                    if r.status_code == 403 and "Rate Limit" in r.text:
+                        print(f"  -> Request {i+1}: BLOCKED by Rate Limiter")
+                        break # Optimization: stop scenario if blocked
+                except Exception as e:
+                    results.append(f"{s['user']:<20} | FAILED     | Error: {e}")
+
 
         # 3. Reporting
         print("\n" + "="*70)
