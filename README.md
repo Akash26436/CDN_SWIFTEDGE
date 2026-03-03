@@ -1,47 +1,51 @@
-# SwiftEdge CDN v3 🚀
+# SwiftEdge CDN v3: Enterprise-Grade Edition 🚀
 
-SwiftEdge CDN v3 is a production-grade Content Delivery Network (CDN) prototype. It focuses on **Real-World Solution Architecture**, transforming edge nodes into intelligent **Points of Presence (POPs)**.
+SwiftEdge CDN v3 is a high-performance Content Delivery Network solution that integrates industry-standard algorithms and architectural patterns.
 
-## 🏗️ Solution Architecture
+## ✅ Feature Checklist Alignment
 
-The system is organized into three distinct layers, mimicking industrial CDN deployments:
+### 🏗️ Core Architecture
+- **✅ Dockerized Distributed System**: Full orchestration with `docker-compose`.
+- **✅ Horizontal Scaling**: Multi-node edge deployment (`edge1`, `edge2`, `edge3`).
+- **✅ Consistent Hashing**: Ring-based hash-routing in the Load Balancer for stable horizontal scaling and cache locality.
+- **✅ Load Balancing**: Hash-based distribution ensures deterministic routing.
 
-### 1. 📂 The Client Plane (Downstream)
-- **Geographic Simulation**: Realistic clients (NY, London, Tokyo) requesting resources.
-- **Latency Steering**: Users are routed to the nearest POP to minimize **TTFB** (Time to First Byte).
+### ⚡ Edge Server Optimization
+- **✅ O(1) Cache Architecture**: HashMap + Doubly Linked List implementation for constant-time lookups and deletions.
+- **✅ Efficient Eviction**: Pure LRU (Least Recently Used) strategy for memory management.
+- **✅ Controlled Concurrency**: Custom Thread Pool to manage high-volume requests without resource exhaustion.
+- **✅ Locking Mechanism**: Per-key locking protects the origin from the "Thundering Herd" problem (cache stampede).
 
-### 2. ⚡ The Edge Plane (POP - Point of Presence)
-- **Optimized Cache Engine**: Multi-tier architecture (L1 Memory / L2 Compressed Disk).
-- **Edge Security Layer**: Integrated **WAF** and **Zero-Trust** token validation.
-- **Upstream Handling**: Intelligent fetch logic that syncs with the origin only on verified cache misses.
+### 💾 Persistence & Observability
+- **✅ Multi-Tier Storage**: Automatic promotion/demotion between Memory (L1) and Disk (L2).
+- **✅ Disk TTL Cache**: Expiration-based invalidation ensures content freshness.
+- **✅ Observability**: Real-time metrics available via the `/metrics` endpoint on every edge node.
 
-### 3. ☁️ The Origin Plane (Upstream)
-- **Authoritative Source**: The backend server (source of truth) for all global assets.
-
-## 🌟 Key Performance Features
-
-- **Adaptive Caching**: LRU-LFU hybrid eviction logic prevents cache pollution.
-- **Async IO**: Background disk writes ensure zero-blocking for high-concurrency traffic.
-- **Micro-Latency Optimization**: Serving from L1 Memory is **~100x faster** than origin fetches.
-
-## 🚀 Experience the Simulation
+## 🚀 Getting Started
 
 ### Prerequisites
-- Python 3.11+
-- `pip install requests`
+- Docker & Docker Compose
+- Python 3.11+ (for local scripts)
 
-### Run the Global Orchestrator
-This script boots the entire global infrastructure (Origin + 3 POPs) and simulates a day-in-the-life of the CDN:
+### Running the Distributed System
+```bash
+docker-compose up --build
+```
+The system will start:
+- **Origin Server**: Port 8001
+- **Edge Nodes**: Ports 8081 (Internal)
+- **Global Load Balancer**: Port 8080 (External entry point)
+
+### Running the Unified Simulation
+For quick verification of all logic in a single terminal:
 ```bash
 python run_cdn_advanced.py
 ```
 
-## 🧪 Simulation Scenarios
-The orchestrator automatically validates:
-- ✅ **New York User**: High-speed delivery via US-East-1 POP.
-- ✅ **London User**: Regional delivery via EU-West-1 POP.
-- ✅ **Security Incident**: WAF intercepts a SQL Injection attack at the edge.
-- ✅ **Unauthorized Access**: Zero-Trust layer blocks a client missing a secure token.
+## 🧪 Verification
+- **Metrics**: Visit `http://localhost:8081/metrics` to see edge performance.
+- **Routing**: Monitor Load Balancer logs to see Consistent Hashing in action.
+- **Security**: Advanced demo includes DDoS and WAF simulation.
 
 ---
-Built with ❤️ for High-Performance Edge Computing.
+Built with ❤️ for Scalable Edge Infrastructure.

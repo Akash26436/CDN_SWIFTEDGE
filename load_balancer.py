@@ -1,30 +1,35 @@
 import socket
 import hashlib
+import bisect
 
-import random
+class ConsistentHash:
+    def __init__(self, nodes=None, replicas=3):
+        self.replicas = replicas
+        self.ring = []
+        self.nodes = {}
+        if nodes:
+            for node in nodes:
+                self.add_node(node)
 
-# Simulated "Global Regions" with latencies (ms)
-# In reality, this would be based on real-time health checks or geodns
-EDGE_REGISTRY = [
-    {'id': 'edge1', 'host': 'edge1', 'port': 8081, 'region': 'US-East', 'latency': 10},
-    {'id': 'edge2', 'host': 'edge2', 'port': 8081, 'region': 'EU-West', 'latency': 50},
-    {'id': 'edge3', 'host': 'edge3', 'port': 8081, 'region': 'ASIA-South', 'latency': 120}
-]
+    def add_node(self, node):
+        for i in range(self.replicas):
+            key = self._hash(f"{node}:{i}")
+            bisect.insort(self.ring, key)
+            self.nodes[key] = node
 
-def get_node(key):
-    """
-    Intelligent Routing: Selects node based on lowest simulated latency.
-    For demonstration, we periodically 'jitter' these latencies to simulate network shifts.
-    """
-    # Simulate network jitter:
-    for node in EDGE_REGISTRY:
-        node['current_latency'] = node['latency'] + random.randint(-5, 5)
+    def _hash(self, key):
+        return int(hashlib.md5(key.encode()).hexdigest(), 16)
 
-    # Pick the best node (lowest current latency)
-    best_node = min(EDGE_REGISTRY, key=lambda x: x['current_latency'])
-    print(f"[LB] Intelligent Routing: Selected {best_node['id']} ({best_node['region']}) with {best_node['current_latency']}ms latency")
-    return best_node['host'], best_node['port']
+    def get_node(self, key):
+        if not self.ring: return None
+        h = self._hash(key)
+        idx = bisect.bisect_right(self.ring, h)
+        if idx == len(self.ring): idx = 0
+        return self.nodes[self.ring[idx]]
 
+# Configuration for Edge Nodes
+NODES = ['edge1:8081', 'edge2:8081', 'edge3:8081']
+CH = ConsistentHash(NODES)
 
 def handle(client):
     try:
@@ -33,21 +38,28 @@ def handle(client):
             client.close()
             return
         
-        parts = req.decode().split(' ')
+        request_text = req.decode(errors='ignore')
+        parts = request_text.split(' ')
         if len(parts) < 2:
             client.close()
             return
             
-        key = parts[1]
-        host, port = get_node(key)
+        path = parts[1]
+        node = CH.get_node(path)
+        host, port = node.split(':')
+        port = int(port)
+
+        print(f"[LB] Hash-Routing path '{path}' to {node}")
 
         edge = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         edge.connect((host, port))
         edge.sendall(req)
         
-        # Simple response forwarding (might need loop for large responses)
-        resp = edge.recv(8192)
-        client.sendall(resp)
+        # Stream response back
+        while True:
+            resp = edge.recv(8192)
+            if not resp: break
+            client.sendall(resp)
         edge.close()
     except Exception as e:
         print(f"Error in load balancer: {e}")

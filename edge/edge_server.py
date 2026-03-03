@@ -9,13 +9,19 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.security import SecurityManager
 from core.edge_compute import EdgeCompute, inject_server_latency_header, minify_html_interceptor
-from core.optimized_cache import OptimizedCache
+from core.metrics import Metrics
+from core.lock_manager import LockManager
+from core.thread_pool import ThreadPool
+from cache.lru_cache import LRUCache
+import cache.disk_cache as disk
 
 metrics = Metrics()
 locks = LockManager()
-pool = ThreadPool(10)
+pool = ThreadPool(20) # Controlled concurrency
 security = SecurityManager()
 compute = EdgeCompute()
+memory_cache = LRUCache(100) # O(1) LRU
+
 
 def get_optimized_cache(port):
     return OptimizedCache(port)
@@ -79,20 +85,30 @@ def handle(client, addr):
         data = memory_cache.get(key)
         if data:
             metrics.hit()
+            status = "HIT_MEM"
         else:
             lock = locks.acquire(key)
             try:
                 data = memory_cache.get(key)
-                if not data:
-                    data = disk_get(key)
-                    if not data:
+                if data:
+                    metrics.hit()
+                    status = "HIT_MEM"
+                else:
+                    data = disk.get(key)
+                    if data:
+                        metrics.hit()
+                        status = "HIT_DISK"
+                        memory_cache.put(key, data)
+                    else:
                         metrics.miss()
+                        status = "MISS"
                         response = requests.get(f"{ORIGIN}/{key}")
                         data = response.content
-                        disk_put(key, data)
-                    memory_cache.put(key, data)
+                        disk.put(key, data)
+                        memory_cache.put(key, data)
             finally:
                 lock.release()
+
 
         # 4. Edge Compute (Response Processing)
         resp_headers = {"Content-Type": "text/html" if key.endswith(".html") else "application/octet-stream"}
