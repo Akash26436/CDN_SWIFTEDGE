@@ -1,51 +1,53 @@
-# SwiftEdge CDN v3: Enterprise-Grade Edition 🚀
+# SwiftEdge CDN v3: Enterprise-Grade Solution 🚀
 
-SwiftEdge CDN v3 is a high-performance Content Delivery Network solution that integrates industry-standard algorithms and architectural patterns.
+SwiftEdge CDN v3 is a state-of-the-art, distributed Content Delivery Network designed for maximum performance, security, and scalability. It implements industry-standard algorithms and architectural patterns used by global CDNs.
 
-## ✅ Feature Checklist Alignment
+## 🌟 Key Features
 
-### 🏗️ Core Architecture
-- **✅ Dockerized Distributed System**: Full orchestration with `docker-compose`.
-- **✅ Horizontal Scaling**: Multi-node edge deployment (`edge1`, `edge2`, `edge3`).
-- **✅ Consistent Hashing**: Ring-based hash-routing in the Load Balancer for stable horizontal scaling and cache locality.
-- **✅ Load Balancing**: Hash-based distribution ensures deterministic routing.
+### ⚡ Performance & Caching
+- **✅ O(1) Memory Cache**: High-performance **HashMap + Doubly Linked List** implementation (LRU) for constant-time lookups.
+- **✅ Multi-Tier Storage**: Seamless data promotion between **Memory (L1)** and **Compressed Disk (L2)**.
+- **✅ Optimized Eviction**: Pure **LRU (Least Recently Used)** strategy prevents cache exhaustion.
+- **✅ Disk TTL**: Automatic expiration-based invalidation for content freshness.
 
-### ⚡ Edge Server Optimization
-- **✅ O(1) Cache Architecture**: HashMap + Doubly Linked List implementation for constant-time lookups and deletions.
-- **✅ Efficient Eviction**: Pure LRU (Least Recently Used) strategy for memory management.
-- **✅ Controlled Concurrency**: Custom Thread Pool to manage high-volume requests without resource exhaustion.
-- **✅ Locking Mechanism**: Per-key locking protects the origin from the "Thundering Herd" problem (cache stampede).
+### 🏗️ Scalability & Reliability
+- **✅ Consistent Hashing**: Ring-based hash-routing ensures stable horizontal scaling and deterministic cache locality.
+- **✅ Thundering Herd Protection**: **Per-key locking** prevents multiple simultaneous origin fetches for the same asset.
+- **✅ Thread Pool Architecture**: Controlled concurrency for high-throughput edge processing.
+- **✅ Intelligent Load Balancing**: Global orchestrator with geographic and hash-based steering.
 
-### 💾 Persistence & Observability
-- **✅ Multi-Tier Storage**: Automatic promotion/demotion between Memory (L1) and Disk (L2).
-- **✅ Disk TTL Cache**: Expiration-based invalidation ensures content freshness.
-- **✅ Observability**: Real-time metrics available via the `/metrics` endpoint on every edge node.
+### 🛡️ Edge Security
+- **✅ Zero-Trust Authentication**: Integrated mandatory token-based security for all API/Edge requests.
+- **✅ Edge WAF**: Built-in SQL Injection and XSS filtering at the Point of Presence (POP).
+- **✅ DDoS Protection**: **Token Bucket Rate Limiting** to intercept high-frequency malicious bursts.
+
+### 📊 Observability
+- **✅ /metrics Endpoint**: Real-time observability on every POP to track Hit Ratios, Latency, and Throughput.
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 - Docker & Docker Compose
-- Python 3.11+ (for local scripts)
+- Python 3.11+
 
-### Running the Distributed System
+### Option 1: Distributed Deployment (Docker)
 ```bash
 docker-compose up --build
 ```
-The system will start:
-- **Origin Server**: Port 8001
-- **Edge Nodes**: Ports 8081 (Internal)
-- **Global Load Balancer**: Port 8080 (External entry point)
+- **Load Balancer**: `http://localhost:8080`
+- **Edge Metrics**: `http://localhost:8081/metrics`
 
-### Running the Unified Simulation
-For quick verification of all logic in a single terminal:
+### Option 2: Unified Simulation (Local)
+Run the full "Day-in-the-Life" orchestrator to see all features (Caching, Security, Routing) in a single report:
 ```bash
 python run_cdn_advanced.py
 ```
 
-## 🧪 Verification
-- **Metrics**: Visit `http://localhost:8081/metrics` to see edge performance.
-- **Routing**: Monitor Load Balancer logs to see Consistent Hashing in action.
-- **Security**: Advanced demo includes DDoS and WAF simulation.
+## 📂 Project Structure
+- `/edge`: Edge Server logic and Core Engines (Security, Metrics, Pool).
+- `/cache`: O(1) LRU and Disk Persistence implementations.
+- `load_balancer.py`: Consistent Hashing ring and request steering.
+- `run_cdn_advanced.py`: High-performance simulation suite.
 
 ---
-Built with ❤️ for Scalable Edge Infrastructure.
+Built for speed, secured at the edge. 🚀✨
