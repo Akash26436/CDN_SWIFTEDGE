@@ -1,36 +1,40 @@
 # SwiftEdge CDN v3 🚀
 
-SwiftEdge CDN v3 is a high-performance, distributed Content Delivery Network (CDN) prototype built with Python. It features edge servers with tiered caching, intelligent traffic routing, and robust security layers.
+SwiftEdge CDN v3 is a high-performance, distributed Content Delivery Network (CDN) prototype. It transforms standard edge nodes into intelligent units capable of **Multi-tier Caching**, **Advanced Security**, and **Edge Computing**.
 
 ## 🌟 Key Features
 
-### 🛡️ Edge Security & Protection
-- **Web Application Firewall (WAF)**: Protects against common web attacks like SQL Injection and XSS.
-- **DDoS Mitigation**: Token Bucket rate limiting to prevent traffic surges.
-- **Bot Detection**: Pattern-based identification of malicious crawlers.
-- **Zero-Trust Security**: Mandatory token-based authentication at the edge.
+### ⚡ Multi-Tier Edge Caching ("Top of everything")
+- **LRU In-Memory Cache**: Lightning-fast retrieval for hot data directly from RAM.
+- **TTL-Based Disk Cache**: Persistence layer ensuring high hit ratios even for large file sets.
+- **Auto-Promotion**: Intelligent movement of data from Disk to Memory based on access patterns.
 
-### 🧠 Intelligent Traffic Management
-- **Latency-Based Routing**: Dynamically routes users to the optimal edge node based on simulated global network conditions.
-- **Simulated Global Regions**: US, EU, and ASIA regions with realistic performance jitter.
+### 🛡️ Global Edge Security
+- **Web Application Firewall (WAF)**: Real-time inspection and blocking of SQL Injection, XSS, and Path Traversal attacks.
+- **DDoS Mitigation**: Token Bucket rate limiting handles massive traffic spikes at the edge.
+- **Behavioral Bot Detection**: Identifies and neutralizes malicious crawlers before they reach your origin.
+- **Zero-Trust Protection**: Mandatory `X-Auth` token validation for every single request.
 
-### ⚡ Performance & Compute
-- **Tiered Caching**: LRU In-Memory cache for hot data + TTL-based Disk cache for persistence.
-- **Edge Compute Engine**: Run custom logic (interceptors) near the user to modify requests and responses.
-- **Custom Thread Pool**: High-concurrency handling for edge requests.
+### 🧠 Intelligent Traffic Routing
+- **Latency-Based Steering**: The Load Balancer dynamically routes traffic to the "closest" healthy edge node (US, EU, or ASIA) based on real-time network Jitter.
+- **Global Scale Simulation**: Real-world network conditions simulated for robust testing.
+
+### 💻 Edge Compute Engine
+- **Request Interceptors**: Modify request context, inject headers, and handle logic near the user.
+- **Response Interceptors**: On-the-fly content modification (e.g., HTML minification) and dynamic header injection.
 
 ## 🛠️ Project Structure
 ```text
 CDN-SWIFTEDGE/
 ├── edge/               # Edge Server Implementation
-│   ├── core/           # Security, Compute, Metrics, Locking
-│   ├── cache/          # LRU and Disk Caching logic
-│   └── edge_server.py  # Main Edge Server logic
-├── origin/             # Origin Server content
-├── load_balancer.py    # Intelligent Routing Load Balancer
-├── run_cdn_advanced.py # Unified Demo Script (Single-process)
-├── Dockerfile          # Containerization for Edge nodes
-└── docker-compose.yml  # Distributed cluster orchestration
+│   ├── core/           # Security, Compute Engine, Metrics, LockManager
+│   ├── cache/          # LRU and Disk Caching algorithms
+│   └── edge_server.py  # Integrated Edge Node logic
+├── origin/             # Origin Server (Source of Truth)
+├── load_balancer.py    # Intelligent Latency-Based Router
+├── run_cdn_advanced.py # THE UNIFIED DEMO SUITE
+├── Dockerfile          # Containerized Node definition
+└── docker-compose.yml  # Cluster orchestration (Origin + 3 Edges + LB)
 ```
 
 ## 🚀 Getting Started
@@ -40,24 +44,24 @@ CDN-SWIFTEDGE/
 - `pip install requests`
 
 ### Running the Advanced Demo
-To see all features (Security, Routing, Zero-Trust) in action, run the unified simulation:
+Experience the full power of SwiftEdge (Security, Caching, Routing) in one command:
 ```bash
 python run_cdn_advanced.py
 ```
 
 ### Distributed Setup (Docker)
-If you have Docker Desktop running:
+To run as a real distributed cluster:
 ```bash
 docker-compose up --build
 ```
-This will spin up a 3-node edge cluster with a dedicated load balancer.
 
 ## 🧪 Verification
-The `run_cdn_advanced.py` script automatically verifies:
-- ✅ Zero-Trust authentication blocks.
-- ✅ WAF intercepting malicious payloads.
-- ✅ Rate limiting triggering under load.
-- ✅ Intelligent routing selecting the best region.
+The `run_cdn_advanced.py` suite automatically validates:
+- [x] **Zero-Trust**: 401 Unauthorized on missing tokens.
+- [x] **WAF**: 403 Forbidden on malicious payloads.
+- [x] **Rate Limiting**: Dropping traffic during simulated DDoS.
+- [x] **Caching**: Verifying Memory vs Disk HITs.
+- [x] **Routing**: Latency-based node selection.
 
 ---
 Built with ❤️ for High-Performance Edge Computing.
