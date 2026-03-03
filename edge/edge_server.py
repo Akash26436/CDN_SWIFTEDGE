@@ -83,10 +83,14 @@ class EdgeServer:
                 return
 
             # 4. Security: WAF
-            safe, reason = self.waf.is_safe(raw_req)
+            import urllib.parse
+            decoded_req = urllib.parse.unquote(raw_req)
+            safe, reason = self.waf.is_safe(decoded_req)
             if not safe:
+                self.metrics.record_rate_limit() # Re-using rate limit trigger metric for any security block in this simplified report
                 self._send_error(client, 403, f"Blocked by WAF: {reason}")
                 return
+
 
             # 5. Multi-Tier Cache Lookup
             resource_key = path.strip("/") or "index.html"

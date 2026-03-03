@@ -87,6 +87,10 @@ class LoadBalancer:
 
 if __name__ == "__main__":
     import threading
-    # In docker, these are the service names from docker-compose
-    LB = LoadBalancer(nodes=["edge1:8081", "edge2:8081", "edge3:8081"])
+    import os
+    # Default to localhost for local simulation; Docker uses service names
+    nodes_env = os.getenv("EDGE_NODES", "edge1:8081,edge2:8081,edge3:8081")
+    NODES = nodes_env.split(",")
+    LB = LoadBalancer(nodes=NODES)
     LB.start()
+
