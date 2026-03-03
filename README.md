@@ -1,67 +1,47 @@
 # SwiftEdge CDN v3 🚀
 
-SwiftEdge CDN v3 is a high-performance, distributed Content Delivery Network (CDN) prototype. It transforms standard edge nodes into intelligent units capable of **Multi-tier Caching**, **Advanced Security**, and **Edge Computing**.
+SwiftEdge CDN v3 is a production-grade Content Delivery Network (CDN) prototype. It focuses on **Real-World Solution Architecture**, transforming edge nodes into intelligent **Points of Presence (POPs)**.
 
-## 🌟 Key Features
+## 🏗️ Solution Architecture
 
-### ⚡ Multi-Tier Edge Caching ("Top of everything")
-- **LRU In-Memory Cache**: Lightning-fast retrieval for hot data directly from RAM.
-- **TTL-Based Disk Cache**: Persistence layer ensuring high hit ratios even for large file sets.
-- **Auto-Promotion**: Intelligent movement of data from Disk to Memory based on access patterns.
+The system is organized into three distinct layers, mimicking industrial CDN deployments:
 
-### 🛡️ Global Edge Security
-- **Web Application Firewall (WAF)**: Real-time inspection and blocking of SQL Injection, XSS, and Path Traversal attacks.
-- **DDoS Mitigation**: Token Bucket rate limiting handles massive traffic spikes at the edge.
-- **Behavioral Bot Detection**: Identifies and neutralizes malicious crawlers before they reach your origin.
-- **Zero-Trust Protection**: Mandatory `X-Auth` token validation for every single request.
+### 1. 📂 The Client Plane (Downstream)
+- **Geographic Simulation**: Realistic clients (NY, London, Tokyo) requesting resources.
+- **Latency Steering**: Users are routed to the nearest POP to minimize **TTFB** (Time to First Byte).
 
-### 🧠 Intelligent Traffic Routing
-- **Latency-Based Steering**: The Load Balancer dynamically routes traffic to the "closest" healthy edge node (US, EU, or ASIA) based on real-time network Jitter.
-- **Global Scale Simulation**: Real-world network conditions simulated for robust testing.
+### 2. ⚡ The Edge Plane (POP - Point of Presence)
+- **Optimized Cache Engine**: Multi-tier architecture (L1 Memory / L2 Compressed Disk).
+- **Edge Security Layer**: Integrated **WAF** and **Zero-Trust** token validation.
+- **Upstream Handling**: Intelligent fetch logic that syncs with the origin only on verified cache misses.
 
-### 💻 Edge Compute Engine
-- **Request Interceptors**: Modify request context, inject headers, and handle logic near the user.
-- **Response Interceptors**: On-the-fly content modification (e.g., HTML minification) and dynamic header injection.
+### 3. ☁️ The Origin Plane (Upstream)
+- **Authoritative Source**: The backend server (source of truth) for all global assets.
 
-## 🛠️ Project Structure
-```text
-CDN-SWIFTEDGE/
-├── edge/               # Edge Server Implementation
-│   ├── core/           # Security, Compute Engine, Metrics, LockManager
-│   ├── cache/          # LRU and Disk Caching algorithms
-│   └── edge_server.py  # Integrated Edge Node logic
-├── origin/             # Origin Server (Source of Truth)
-├── load_balancer.py    # Intelligent Latency-Based Router
-├── run_cdn_advanced.py # THE UNIFIED DEMO SUITE
-├── Dockerfile          # Containerized Node definition
-└── docker-compose.yml  # Cluster orchestration (Origin + 3 Edges + LB)
-```
+## 🌟 Key Performance Features
 
-## 🚀 Getting Started
+- **Adaptive Caching**: LRU-LFU hybrid eviction logic prevents cache pollution.
+- **Async IO**: Background disk writes ensure zero-blocking for high-concurrency traffic.
+- **Micro-Latency Optimization**: Serving from L1 Memory is **~100x faster** than origin fetches.
+
+## 🚀 Experience the Simulation
 
 ### Prerequisites
 - Python 3.11+
 - `pip install requests`
 
-### Running the Advanced Demo
-Experience the full power of SwiftEdge (Security, Caching, Routing) in one command:
+### Run the Global Orchestrator
+This script boots the entire global infrastructure (Origin + 3 POPs) and simulates a day-in-the-life of the CDN:
 ```bash
 python run_cdn_advanced.py
 ```
 
-### Distributed Setup (Docker)
-To run as a real distributed cluster:
-```bash
-docker-compose up --build
-```
-
-## 🧪 Verification
-The `run_cdn_advanced.py` suite automatically validates:
-- [x] **Zero-Trust**: 401 Unauthorized on missing tokens.
-- [x] **WAF**: 403 Forbidden on malicious payloads.
-- [x] **Rate Limiting**: Dropping traffic during simulated DDoS.
-- [x] **Caching**: Verifying Memory vs Disk HITs.
-- [x] **Routing**: Latency-based node selection.
+## 🧪 Simulation Scenarios
+The orchestrator automatically validates:
+- ✅ **New York User**: High-speed delivery via US-East-1 POP.
+- ✅ **London User**: Regional delivery via EU-West-1 POP.
+- ✅ **Security Incident**: WAF intercepts a SQL Injection attack at the edge.
+- ✅ **Unauthorized Access**: Zero-Trust layer blocks a client missing a secure token.
 
 ---
 Built with ❤️ for High-Performance Edge Computing.
