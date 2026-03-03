@@ -2,20 +2,23 @@ import socket
 import hashlib
 import bisect
 
-class ConsistentHash:
-    def __init__(self, nodes=None, replicas=3):
+class ConsistentHashRing:
+    """
+    Consistent Hashing with virtual nodes for stable distribution.
+    """
+    def __init__(self, nodes=None, replicas=50):
         self.replicas = replicas
         self.ring = []
-        self.nodes = {}
+        self.nodes = {} # Hash -> node_name
         if nodes:
             for node in nodes:
                 self.add_node(node)
 
     def add_node(self, node):
         for i in range(self.replicas):
-            key = self._hash(f"{node}:{i}")
-            bisect.insort(self.ring, key)
-            self.nodes[key] = node
+            h = self._hash(f"{node}:{i}")
+            bisect.insort(self.ring, h)
+            self.nodes[h] = node
 
     def _hash(self, key):
         return int(hashlib.md5(key.encode()).hexdigest(), 16)
@@ -27,55 +30,63 @@ class ConsistentHash:
         if idx == len(self.ring): idx = 0
         return self.nodes[self.ring[idx]]
 
-# Configuration for Edge Nodes
-NODES = ['edge1:8081', 'edge2:8081', 'edge3:8081']
-CH = ConsistentHash(NODES)
+class LoadBalancer:
+    def __init__(self, port=8080, nodes=None):
+        self.port = port
+        self.ring = ConsistentHashRing(nodes)
+        print(f"[LB] Consistent Hashing Ring initialized with {len(nodes)} nodes.")
 
-def handle(client):
-    try:
-        req = client.recv(4096)
-        if not req:
-            client.close()
-            return
-        
-        request_text = req.decode(errors='ignore')
-        parts = request_text.split(' ')
-        if len(parts) < 2:
-            client.close()
-            return
+    def handle_request(self, client):
+        try:
+            req = client.recv(4096)
+            if not req: return
             
-        path = parts[1]
-        node = CH.get_node(path)
-        host, port = node.split(':')
-        port = int(port)
+            raw = req.decode(errors='ignore')
+            lines = raw.split('\r\n')
+            if not lines: return
+            
+            first_line = lines[0].split(' ')
+            if len(first_line) < 2: return
+            
+            path = first_line[1]
+            target_node = self.ring.get_node(path)
+            
+            if not target_node:
+                client.sendall(b"HTTP/1.1 503 Service Unavailable\r\n\r\nNo edge nodes available")
+                return
 
-        print(f"[LB] Hash-Routing path '{path}' to {node}")
+            print(f"[LB] Route: {path} -> {target_node}")
+            host, port = target_node.split(':')
+            
+            # Forward to Edge
+            edge = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            edge.connect((host, int(port)))
+            edge.sendall(req)
+            
+            # Stream response back to client
+            while True:
+                data = edge.recv(8192)
+                if not data: break
+                client.sendall(data)
+            edge.close()
 
-        edge = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        edge.connect((host, port))
-        edge.sendall(req)
-        
-        # Stream response back
+        except Exception as e:
+            print(f"[LB] Forward Error: {e}")
+        finally:
+            client.close()
+
+    def start(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(('0.0.0.0', self.port))
+        s.listen(100)
+        print(f"[LB] Listening on port {self.port}...")
         while True:
-            resp = edge.recv(8192)
-            if not resp: break
-            client.sendall(resp)
-        edge.close()
-    except Exception as e:
-        print(f"Error in load balancer: {e}")
-    finally:
-        client.close()
+            client, addr = s.accept()
+            threading.Thread(target=self.handle_request, args=(client,), daemon=True).start()
 
-
-def start():
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind(('0.0.0.0', 8080))
-    server.listen(100)
-    print('Load balancer on 8080')
-    while True:
-        client, _ = server.accept()
-        handle(client)
-
-if __name__ == '__main__':
-    start()
+if __name__ == "__main__":
+    import threading
+    # In docker, these are the service names from docker-compose
+    LB = LoadBalancer(nodes=["edge1:8081", "edge2:8081", "edge3:8081"])
+    LB.start()

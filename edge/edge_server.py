@@ -1,144 +1,162 @@
 import socket
-import argparse
-import requests
-import os
+import threading
 import sys
+import os
 
-# Add the project root to sys.path to allow relative imports
+# Allow importing from root
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.security import SecurityManager
-from core.edge_compute import EdgeCompute, inject_server_latency_header, minify_html_interceptor
-from core.metrics import Metrics
-from core.lock_manager import LockManager
-from core.thread_pool import ThreadPool
+from concurrent.futures import ThreadPoolExecutor
 from cache.lru_cache import LRUCache
-import cache.disk_cache as disk
+from cache.disk_cache import DiskCache
+from security.rate_limiter import RateLimiter
+from security.waf import WAF
+from security.auth import AuthManager
+from metrics.metrics import Metrics
+import time
+import requests
+import argparse
 
-metrics = Metrics()
-locks = LockManager()
-pool = ThreadPool(20) # Controlled concurrency
-security = SecurityManager()
-compute = EdgeCompute()
-memory_cache = LRUCache(100) # O(1) LRU
+class LockManager:
+    def __init__(self):
+        self.locks = {}
+        self.master_lock = threading.Lock()
 
+    def get_lock(self, key):
+        with self.master_lock:
+            if key not in self.locks:
+                self.locks[key] = threading.Lock()
+            return self.locks[key]
 
-def get_optimized_cache(port):
-    return OptimizedCache(port)
-
-
-# Register Edge Functions
-compute.register_request_interceptor(inject_server_latency_header)
-compute.register_response_interceptor(minify_html_interceptor)
-
-ORIGIN = 'http://origin:8001'
-ZERO_TRUST_TOKEN = "secure-edge-token-2026"
-
-def handle(client, addr):
-    ip = addr[0]
-    try:
-        raw_request = client.recv(4096)
-        if not raw_request:
-            client.close()
-            return
-            
-        request_text = raw_request.decode(errors='ignore')
-        lines = request_text.split('\r\n')
-        if not lines: return
+class EdgeServer:
+    """
+    Enterprise Edge Server with multi-tier caching, security, and metrics.
+    """
+    def __init__(self, port, origin_url="http://origin:8001"):
+        self.port = port
+        self.origin_url = origin_url
         
-        parts = lines[0].split(' ')
-        if len(parts) < 2: return
-        path = parts[1]
+        # Components
+        self.l1_cache = LRUCache(capacity=200)
+        self.l2_cache = DiskCache(cache_dir=f"disk_cache_{port}", ttl=120)
+        self.limiter = RateLimiter(rate=5, capacity=10)
+        self.waf = WAF()
+        self.auth = AuthManager()
+        self.metrics = Metrics()
+        self.lock_manager = LockManager()
+        self.pool = ThreadPoolExecutor(max_workers=50)
+
+    def handle_client(self, client, addr):
+        start_time = time.perf_counter()
+        self.metrics.record_request()
         
-        # 1. Edge Security (WAF, Rate Limiting, Bot Detection)
-        user_agent = "Unknown"
-        headers = {}
-        for line in lines[1:]:
-            if ': ' in line:
-                k, v = line.split(': ', 1)
-                headers[k] = v
-                if k.lower() == 'user-agent': user_agent = v
-
-        is_allowed, reason = security.check_request(ip, user_agent, request_text)
-        if not is_allowed:
-            client.sendall(f"HTTP/1.1 403 Forbidden\r\n\r\nSecurity Block: {reason}".encode())
-            return
-
-        # 2. Zero-trust / API Protection
-        if "X-Edge-Auth" not in headers or headers["X-Edge-Auth"] != ZERO_TRUST_TOKEN:
-             client.sendall(b"HTTP/1.1 401 Unauthorized\r\n\r\nZero-trust: Missing or invalid token")
-             return
-
-        if path == '/metrics':
-            client.sendall(b"HTTP/1.1 200 OK\r\n\r\n" + metrics.report().encode())
-            client.close()
-            return
+        try:
+            raw_req = client.recv(4096).decode(errors='ignore')
+            if not raw_req: return
             
-        key = path.strip('/') or 'index.html'
+            lines = raw_req.split('\r\n')
+            first_line = lines[0].split(' ')
+            if len(first_line) < 2: return
+            
+            method, path = first_line[0], first_line[1]
+            headers = {}
+            for line in lines[1:]:
+                if ": " in line:
+                    k, v = line.split(": ", 1)
+                    headers[k] = v
 
-        # 3. Edge Compute (Request Processing)
-        context = compute.process_request(key, headers)
-        key = context["key"]
+            # 1. Metrics Endpoint
+            if path == "/metrics":
+                self._send_response(client, self.metrics.get_json(), "application/json")
+                return
 
-        metrics.request()
+            # 2. Security: Rate Limiting
+            if not self.limiter.consume():
+                self.metrics.record_rate_limit()
+                self._send_error(client, 429, "Too Many Requests")
+                return
 
-        data = memory_cache.get(key)
+            # 3. Security: Auth
+            success, err = self.auth.validate(headers.get("Authorization"))
+            if not success:
+                self._send_error(client, 401, err)
+                return
+
+            # 4. Security: WAF
+            safe, reason = self.waf.is_safe(raw_req)
+            if not safe:
+                self._send_error(client, 403, f"Blocked by WAF: {reason}")
+                return
+
+            # 5. Multi-Tier Cache Lookup
+            resource_key = path.strip("/") or "index.html"
+            data = self._tiered_lookup(resource_key)
+            
+            # 6. Final Delivery
+            self.metrics.record_latency((time.perf_counter() - start_time) * 1000)
+            self._send_response(client, data)
+
+        except Exception as e:
+            print(f"[Edge {self.port}] Error: {e}")
+        finally:
+            client.close()
+
+    def _tiered_lookup(self, key):
+        # L1 (Memory)
+        data = self.l1_cache.get(key)
         if data:
-            metrics.hit()
-            status = "HIT_MEM"
-        else:
-            lock = locks.acquire(key)
+            self.metrics.record_hit()
+            return data
+
+        # Lock to prevent thundering herd
+        lock = self.lock_manager.get_lock(key)
+        with lock:
+            # Re-check L1
+            data = self.l1_cache.get(key)
+            if data: return data
+            
+            # L2 (Disk)
+            data = self.l2_cache.get(key)
+            if data:
+                self.metrics.record_hit()
+                self.l1_cache.put(key, data)
+                return data
+
+            # MISS: Fetch from Origin
+            self.metrics.record_miss()
             try:
-                data = memory_cache.get(key)
-                if data:
-                    metrics.hit()
-                    status = "HIT_MEM"
-                else:
-                    data = disk.get(key)
-                    if data:
-                        metrics.hit()
-                        status = "HIT_DISK"
-                        memory_cache.put(key, data)
-                    else:
-                        metrics.miss()
-                        status = "MISS"
-                        response = requests.get(f"{ORIGIN}/{key}")
-                        data = response.content
-                        disk.put(key, data)
-                        memory_cache.put(key, data)
-            finally:
-                lock.release()
+                resp = requests.get(f"{self.origin_url}/{key}")
+                data = resp.content
+                self.l2_cache.put(key, data)
+                self.l1_cache.put(key, data)
+                return data
+            except:
+                return b"Error fetching from origin"
 
+    def _send_response(self, client, data, content_type="text/html"):
+        if isinstance(data, str): data = data.encode()
+        header = f"HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {len(data)}\r\nConnection: close\r\n\r\n"
+        client.sendall(header.encode() + data)
 
-        # 4. Edge Compute (Response Processing)
-        resp_headers = {"Content-Type": "text/html" if key.endswith(".html") else "application/octet-stream"}
-        data, resp_headers = compute.process_response(data, resp_headers)
+    def _send_error(self, client, code, msg):
+        resp = f"HTTP/1.1 {code} {msg}\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n{msg}"
+        client.sendall(resp.encode())
 
-        header_str = "HTTP/1.1 200 OK\r\n"
-        for k, v in resp_headers.items():
-            header_str += f"{k}: {v}\r\n"
-        header_str += "\r\n"
+    def start(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(('0.0.0.0', self.port))
+        s.listen(100)
+        print(f"[Edge] Serving on port {self.port}...")
+        while True:
+            client, addr = s.accept()
+            self.pool.submit(self.handle_client, client, addr)
 
-        client.sendall(header_str.encode() + data)
-    except Exception as e:
-        print(f"Error handling request from {ip}: {e}")
-    finally:
-        client.close()
-
-
-def start(port):
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind(('0.0.0.0', port))
-    server.listen(100)
-    print(f"Edge running {port}")
-    while True:
-        client, addr = server.accept()
-        pool.submit(handle, client, addr)
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--port', type=int, default=8081)
+    parser.add_argument("--port", type=int, default=8081)
+    parser.add_argument("--origin", type=str, default="http://origin:8001")
     args = parser.parse_args()
-    start(args.port)
+    
+    server = EdgeServer(args.port, args.origin)
+    server.start()

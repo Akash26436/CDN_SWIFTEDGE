@@ -1,7 +1,8 @@
-version: '3'
+version: '3.8'
+
 services:
   origin:
-    image: python:3.11
+    image: python:3.11-slim
     working_dir: /origin
     volumes:
       - ./origin:/origin
@@ -10,20 +11,25 @@ services:
   edge1:
     build: .
     volumes:
-      - ./edge1_cache:/app/disk_cache
-    command: python edge/edge_server.py --port 8081
+      - ./edge1_cache:/app/disk_cache_8081
+    command: python edge/edge_server.py --port 8081 --origin http://origin:8001
+    ports:
+      - "8081:8081"
 
   edge2:
     build: .
     volumes:
-      - ./edge2_cache:/app/disk_cache
-    command: python edge/edge_server.py --port 8081
+      - ./edge2_cache:/app/disk_cache_8081
+    command: python edge/edge_server.py --port 8081 --origin http://origin:8001
+    # Note: Inside the container it's 8081, but usually LB handles it.
+    # To avoid port conflicts on host if mapping:
+    # ports: ["8082:8081"]
 
   edge3:
     build: .
     volumes:
-      - ./edge3_cache:/app/disk_cache
-    command: python edge/edge_server.py --port 8081
+      - ./edge3_cache:/app/disk_cache_8081
+    command: python edge/edge_server.py --port 8081 --origin http://origin:8001
 
   load_balancer:
     build: .

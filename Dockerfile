@@ -1,6 +1,15 @@
-FROM python:3.11
+FROM python:3.11-slim
+
 WORKDIR /app
-COPY . .
+
+# Install dependencies
 RUN pip install requests
-ENV PYTHONPATH=/app/edge
-CMD ["python", "edge/edge_server.py", "--port", "8081"]
+
+# Copy the entire project
+COPY . .
+
+# Set environment variable for Python path
+ENV PYTHONPATH=/app
+
+# Default command (will be overridden in docker-compose)
+CMD ["python", "edge/edge_server.py"]
